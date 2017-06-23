@@ -28,7 +28,7 @@ public class UnmanagedExtension {
     private final ObjectMapper objectMapper;
 
 
-    private static final RelationshipType ACTED_IN = RelationshipType.withName("ACTED_IN");
+    private static final RelationshipType ACTS_IN = RelationshipType.withName("ACTS_IN");
     private static final Label Person = Label.label("Person");
     private static final Label Movie = Label.label("Movie");
 
@@ -38,34 +38,41 @@ public class UnmanagedExtension {
         this.objectMapper = new ObjectMapper();
     }
 
-
     @GET
     @Produces( MediaType.APPLICATION_JSON )
     @Path( "/common-actors/{first}/{second}" )
     public Response commonActorsTraversal(@PathParam( "first" ) String first, @PathParam( "second" ) String second) {
         StreamingOutput stream = (OutputStream output) -> {
-            Map params = new HashMap();
-
-            params.put("first", first);
-            params.put("second", second);
-
             JsonGenerator json = objectMapper.getJsonFactory().createJsonGenerator(output, JsonEncoding.UTF8);
 
             json.writeStartArray();
 
             try (Transaction tx = db.beginTx()) {
-                Node movie = db.findNode(Movie, "title", first );
+                Node first_node = db.findNode(Movie, "title", first);
+                Node second_node = db.findNode(Movie, "title", second);
 
-                json.writeStartArray();
+                for (Relationship rel : first_node.getRelationships(Direction.INCOMING, ACTS_IN)) {
+                    Node actor = rel.getStartNode();
 
-                json.writeFieldName("_id");
-                json.writeNumber(movie.getId());
+                    for (Relationship mutualrel : actor.getRelationships(Direction.OUTGOING, ACTS_IN)) {
+                        Node other_movie = mutualrel.getEndNode();
+                        Long other_id = other_movie.getId();
 
-                json.writeEndObject();
+                        if ( other_id.equals(second_node.getId()) ) {
+                            json.writeStartObject();
 
+                            json.writeFieldName("_id");
+                            json.writeNumber(actor.getId());
+
+                            json.writeFieldName("name");
+                            json.writeString((String) actor.getProperty("name"));
+
+                            json.writeEndObject();
+                        }
+                    }
+                }
 
                 tx.success();
-
             }
 
             json.writeEndArray();
@@ -105,6 +112,8 @@ public class UnmanagedExtension {
 
                         json.writeFieldName("name");
                         json.writeString(actor.getProperty("name").toString());
+
+
 
 
                         json.writeEndObject();
