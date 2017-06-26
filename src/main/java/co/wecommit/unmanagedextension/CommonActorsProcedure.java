@@ -1,9 +1,6 @@
 package co.wecommit.unmanagedextension;
 
-import org.neo4j.graphdb.GraphDatabaseService;
-import org.neo4j.graphdb.Node;
-import org.neo4j.graphdb.Result;
-import org.neo4j.graphdb.Transaction;
+import org.neo4j.graphdb.*;
 import org.neo4j.procedure.Procedure;
 import org.neo4j.procedure.Context;
 import org.neo4j.procedure.Description;
@@ -21,6 +18,8 @@ public class CommonActorsProcedure {
 
     @Context
     public GraphDatabaseService db;
+
+    private static final RelationshipType ACTS_IN = RelationshipType.withName("ACTS_IN");
 
     public static class ActorResult {
         public Node actor;
@@ -61,4 +60,23 @@ public class CommonActorsProcedure {
                 "MATCH (actor)-[r:ACTS_IN]->(m:Movie) return actor, collect({rel:r, movie:m}) as roles";
     }
 
+    @Procedure(value="movies.commonBetween", mode = Mode.READ)
+    @Description("Get all common actors between two movie nodes")
+    public Stream<ActorResult> commonActorsCore(@Name("start") Node start, @Name("end") Node end) {
+        ArrayList<ActorResult> results = new ArrayList<>();
+
+        for (Relationship rel : start.getRelationships(Direction.INCOMING, ACTS_IN)) {
+            Node actor = rel.getStartNode();
+
+            for (Relationship mutual : actor.getRelationships(Direction.OUTGOING, ACTS_IN)) {
+                Node other_movie = mutual.getEndNode();
+
+                if (end.equals(other_movie)) {
+                    results.add(new ActorResult(actor));
+                }
+            }
+        }
+
+        return results.stream();
+    }
 }
